@@ -133,6 +133,11 @@ result<mc_x> mc_x::create(hal::can_router& p_router,
 {
   mc_x mc_x_driver(
     p_router, p_clock, p_gear_ratio, device_id, p_max_response_time);
+
+  // This is used to detect if the device is present, will throw a timeout if
+  // the device is not present.
+  HAL_CHECK(mc_x_driver.feedback_request(read::multi_turns_angle));
+
   return mc_x_driver;
 }
 

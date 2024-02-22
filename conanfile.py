@@ -24,7 +24,7 @@ required_conan_version = ">=2.0.6"
 
 class libhal_rmd_conan(ConanFile):
     name = "libhal-rmd"
-    version = "3.2.0"
+    version = "3.2.1"
     license = "Apache-2.0"
     url = "https://github.com/conan-io/conan-center-index"
     homepage = "https://libhal.github.io/libhal-rmd"
