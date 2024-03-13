@@ -25,24 +25,19 @@ namespace {
 struct drc_inert_can : public hal::can
 {
 private:
-  status driver_configure([[maybe_unused]] const settings& p_settings) override
+  void driver_configure(const settings&) override
   {
-    return hal::success();
   }
 
-  status driver_bus_on() override
+  void driver_bus_on() override
   {
-    return hal::success();
   }
 
-  result<send_t> driver_send(
-    [[maybe_unused]] const message_t& p_message) override
+  void driver_send(const message_t&) override
   {
-    return send_t{};
   }
 
-  void driver_on_receive(
-    [[maybe_unused]] hal::callback<handler> p_handler) override
+  void driver_on_receive(hal::callback<handler>) override
   {
   }
 };

@@ -21,7 +21,7 @@
 
 #include "../hardware_map.hpp"
 
-hal::status application(hardware_map& p_map)
+void application(hardware_map_t& p_map)
 {
   using namespace std::chrono_literals;
   using namespace hal::literals;
@@ -32,13 +32,13 @@ hal::status application(hardware_map& p_map)
 
   hal::print(console, "RMD DRC Smart Servo Application Starting...\n\n");
 
-  auto router = HAL_CHECK(hal::can_router::create(can));
-  auto drc = HAL_CHECK(hal::rmd::drc::create(router, clock, 6.0f, 0x141));
+  hal::can_router router(can);
+  hal::rmd::drc drc(router, clock, 6.0f, 0x141);
 
   auto print_feedback = [&drc, &console]() {
-    (void)drc.feedback_request(hal::rmd::drc::read::status_2);
-    (void)drc.feedback_request(hal::rmd::drc::read::multi_turns_angle);
-    (void)drc.feedback_request(hal::rmd::drc::read::status_1_and_error_flags);
+    drc.feedback_request(hal::rmd::drc::read::status_2);
+    drc.feedback_request(hal::rmd::drc::read::multi_turns_angle);
+    drc.feedback_request(hal::rmd::drc::read::status_1_and_error_flags);
 
     hal::print<2048>(console,
                      "[%u] =================================\n"
@@ -77,38 +77,36 @@ hal::status application(hardware_map& p_map)
   hal::delay(clock, 500ms);
 
   while (true) {
-    HAL_CHECK(drc.velocity_control(10.0_rpm));
+    drc.velocity_control(10.0_rpm);
     hal::delay(clock, 5000ms);
     print_feedback();
 
-    HAL_CHECK(drc.velocity_control(-10.0_rpm));
+    drc.velocity_control(-10.0_rpm);
     hal::delay(clock, 5000ms);
     print_feedback();
 
-    HAL_CHECK(drc.position_control(0.0_deg, 50.0_rpm));
+    drc.position_control(0.0_deg, 50.0_rpm);
     hal::delay(clock, 5000ms);
     print_feedback();
 
-    HAL_CHECK(drc.position_control(-45.0_deg, 50.0_rpm));
+    drc.position_control(-45.0_deg, 50.0_rpm);
     hal::delay(clock, 5000ms);
     print_feedback();
 
-    HAL_CHECK(drc.position_control(90.0_deg, 50.0_rpm));
+    drc.position_control(90.0_deg, 50.0_rpm);
     hal::delay(clock, 5000ms);
     print_feedback();
 
-    HAL_CHECK(drc.position_control(180.0_deg, 50.0_rpm));
+    drc.position_control(180.0_deg, 50.0_rpm);
     hal::delay(clock, 5000ms);
     print_feedback();
 
-    HAL_CHECK(drc.position_control(-360.0_deg, 50.0_rpm));
+    drc.position_control(-360.0_deg, 50.0_rpm);
     hal::delay(clock, 5000ms);
     print_feedback();
 
-    HAL_CHECK(drc.position_control(0.0_deg, 50.0_rpm));
+    drc.position_control(0.0_deg, 50.0_rpm);
     hal::delay(clock, 5000ms);
     print_feedback();
   }
-
-  return hal::success();
 }

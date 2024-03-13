@@ -23,9 +23,7 @@ libhal_build_demos(
 
   PACKAGES
   libhal-rmd
-  libhal-util
 
   LINK_LIBRARIES
   libhal::rmd
-  libhal::util
 )

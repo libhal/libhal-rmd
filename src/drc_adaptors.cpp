@@ -23,11 +23,9 @@ drc_servo::drc_servo(drc& p_drc, hal::rpm p_max_speed)
 {
 }
 
-result<hal::servo::position_t> drc_servo::driver_position(
-  hal::degrees p_position)
+void drc_servo::driver_position(hal::degrees p_position)
 {
-  HAL_CHECK(m_drc->position_control(p_position, m_max_speed));
-  return hal::servo::position_t{};
+  m_drc->position_control(p_position, m_max_speed);
 }
 
 drc_temperature_sensor::drc_temperature_sensor(drc& p_drc)
@@ -35,13 +33,10 @@ drc_temperature_sensor::drc_temperature_sensor(drc& p_drc)
 {
 }
 
-result<hal::temperature_sensor::read_t> drc_temperature_sensor::driver_read()
+hal::celsius drc_temperature_sensor::driver_read()
 {
-  HAL_CHECK(m_drc->feedback_request(hal::rmd::drc::read::status_2));
-
-  return hal::temperature_sensor::read_t{
-    .temperature = m_drc->feedback().temperature(),
-  };
+  m_drc->feedback_request(hal::rmd::drc::read::status_2);
+  return m_drc->feedback().temperature();
 }
 
 drc_rotation_sensor::drc_rotation_sensor(drc& p_drc)
@@ -49,28 +44,25 @@ drc_rotation_sensor::drc_rotation_sensor(drc& p_drc)
 {
 }
 
-result<hal::rotation_sensor::read_t> drc_rotation_sensor::driver_read()
+hal::rotation_sensor::read_t drc_rotation_sensor::driver_read()
 {
-  HAL_CHECK(m_drc->feedback_request(hal::rmd::drc::read::multi_turns_angle));
-
-  return hal::rotation_sensor::read_t{
-    .angle = m_drc->feedback().angle(),
-  };
+  m_drc->feedback_request(hal::rmd::drc::read::multi_turns_angle);
+  return { .angle = m_drc->feedback().angle() };
 }
 
-result<rmd::drc_rotation_sensor> make_rotation_sensor(rmd::drc& p_drc)
+rmd::drc_rotation_sensor make_rotation_sensor(rmd::drc& p_drc)
 {
-  return rmd::drc_rotation_sensor(p_drc);
+  return { p_drc };
 }
 
-result<rmd::drc_servo> make_servo(rmd::drc& p_drc, hal::rpm p_max_speed)
+rmd::drc_servo make_servo(rmd::drc& p_drc, hal::rpm p_max_speed)
 {
-  return rmd::drc_servo(p_drc, std::abs(p_max_speed));
+  return { p_drc, std::abs(p_max_speed) };
 }
 
-result<rmd::drc_temperature_sensor> make_temperature_sensor(rmd::drc& p_drc)
+rmd::drc_temperature_sensor make_temperature_sensor(rmd::drc& p_drc)
 {
-  return rmd::drc_temperature_sensor(p_drc);
+  return { p_drc };
 }
 
 drc_motor::drc_motor(rmd::drc& p_drc, hal::rpm p_max_speed)
@@ -79,18 +71,17 @@ drc_motor::drc_motor(rmd::drc& p_drc, hal::rpm p_max_speed)
 {
 }
 
-result<hal::motor::power_t> drc_motor::driver_power(float p_power)
+void drc_motor::driver_power(float p_power)
 {
-  HAL_CHECK(m_drc->velocity_control(m_max_speed * p_power));
-  return hal::motor::power_t{};
+  m_drc->velocity_control(m_max_speed * p_power);
 }
 
-result<drc_motor> make_motor(rmd::drc& p_drc, hal::rpm p_max_speed)
+drc_motor make_motor(rmd::drc& p_drc, hal::rpm p_max_speed)
 {
-  return drc_motor(p_drc, std::abs(p_max_speed));
+  return { p_drc, std::abs(p_max_speed) };
 }
 
-result<int> make_servo(hal::rpm p_max_speed)
+int make_servo(hal::rpm p_max_speed)
 {
   return static_cast<int>(5 * p_max_speed);
 }
@@ -100,18 +91,14 @@ drc_angular_velocity_sensor::drc_angular_velocity_sensor(drc& p_drc)
 {
 }
 
-result<angular_velocity_sensor::read_t>
-drc_angular_velocity_sensor::driver_read()
+hal::rpm drc_angular_velocity_sensor::driver_read()
 {
-  HAL_CHECK(m_drc->feedback_request(drc::read::status_2));
-
-  return angular_velocity_sensor::read_t{ .angular_velocity =
-                                            m_drc->feedback().speed() };
+  m_drc->feedback_request(drc::read::status_2);
+  return m_drc->feedback().speed();
 }
 
-result<drc_angular_velocity_sensor> make_angular_velocity_sensor(drc& p_drc)
+drc_angular_velocity_sensor make_angular_velocity_sensor(drc& p_drc)
 {
-  return drc_angular_velocity_sensor(p_drc);
+  return { p_drc };
 }
-
 }  // namespace hal::rmd

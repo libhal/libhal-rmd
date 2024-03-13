@@ -109,23 +109,21 @@ public:
    * @param p_router - can router to use
    * @param p_clock - clocked used to determine timeouts
    * @param p_gear_ratio - gear ratio of the motor
-   * @param device_id - The CAN ID of the motor
+   * @param p_device_id - The CAN ID of the motor
    * @param p_max_response_time - maximum amount of time to wait for a response
    * from the motor.
-   * @return result<mc_x> - the mc_x driver or an error (no errors are currently
-   * generated from this function)
+   * @throws hal::timed_out - if the p_max_response_time is exceeded
    */
-  [[nodiscard]] static result<mc_x> create(
-    hal::can_router& p_router,
-    hal::steady_clock& p_clock,
-    float p_gear_ratio,
-    can::id_t device_id,
-    hal::time_duration p_max_response_time = std::chrono::milliseconds(10));
+  mc_x(hal::can_router& p_router,
+       hal::steady_clock& p_clock,
+       float p_gear_ratio,
+       can::id_t p_device_id,
+       hal::time_duration p_max_response_time = std::chrono::milliseconds(10));
 
-  mc_x(mc_x& p_other) = delete;
-  mc_x& operator=(mc_x& p_other) = delete;
-  mc_x(mc_x&& p_other) noexcept;
-  mc_x& operator=(mc_x&& p_other) noexcept;
+  mc_x(mc_x&) = delete;
+  mc_x& operator=(mc_x&) = delete;
+  mc_x(mc_x&&) noexcept;
+  mc_x& operator=(mc_x&&) noexcept;
 
   /**
    * @brief Get feedback about the motor
@@ -135,7 +133,7 @@ public:
    * This object will not update without one of those APIs being called.
    *
    * @return const feedback_t& - information about the motor
-   * @throws std::errc::timed_out - if a response is not returned within the max
+   * @throws hal::timed_out - if a response is not returned within the max
    * response time set at creation.
    */
   const feedback_t& feedback() const;
@@ -144,11 +142,10 @@ public:
    * @brief Request feedback from the motor
    *
    * @param p_command - the request to command the motor to respond with
-   * @return status - success or failure
-   * @throws std::errc::timed_out - if a response is not returned within the max
+   * @throws hal::timed_out - if a response is not returned within the max
    * response time set at creation.
    */
-  [[nodiscard]] status feedback_request(read p_command);
+  void feedback_request(read p_command);
 
   /**
    * @brief Rotate motor shaft at the designated speed
@@ -156,32 +153,30 @@ public:
    * @param p_speed - speed in rpm to move the motor shaft at. Positive values
    * rotate the motor shaft clockwise, negative values rotate the motor shaft
    * counter-clockwise assuming you are looking directly at the motor shaft.
-   * @return status - success or failure
-   * @throws std::errc::timed_out - if a response is not returned within the max
+   * @throws hal::timed_out - if a response is not returned within the max
    * response time set at creation.
    */
-  [[nodiscard]] status velocity_control(rpm p_speed);
+  void velocity_control(rpm p_speed);
 
   /**
    * @brief Move motor shaft to a specific angle
    *
    * @param p_angle - angle position in degrees to move to
    * @param speed - speed in rpm's
-   * @return status - success or failure
-   * @throws std::errc::timed_out - if a response is not returned within the max
+   * @throws hal::timed_out - if a response is not returned within the max
    * response time set at creation.
    */
-  [[nodiscard]] status position_control(degrees p_angle, rpm speed);
+  void position_control(degrees p_angle, rpm speed);
 
   /**
    * @brief Send system control commands to the device
    *
    * @param p_system_command - system control command to send to the device
-   * @return status - success or failure status
-   * @throws std::errc::timed_out - if a response is not returned within the max
+   * status
+   * @throws hal::timed_out - if a response is not returned within the max
    * response time set at creation.
    */
-  [[nodiscard]] status system_control(system p_system_command);
+  void system_control(system p_system_command);
 
   /**
    * @brief Handle messages from the can bus with this devices ID
@@ -193,13 +188,12 @@ public:
   void operator()(const can::message_t& p_message);
 
 private:
-  mc_x(hal::can_router& p_router,
-       hal::steady_clock& p_clock,
-       float p_gear_ratio,
-       can::id_t p_device_id,
-       hal::time_duration p_max_response_time);
-
-  friend struct response_waiter;
+  /**
+   * @brief Send command on can bus to the motor using its device ID
+   *
+   * @param p_payload - command data to be sent to the device
+   */
+  void send(std::array<hal::byte, 8> p_payload);
 
   feedback_t m_feedback{};
   hal::steady_clock* m_clock;
@@ -218,8 +212,8 @@ class mc_x_motor : public hal::motor
 {
 private:
   mc_x_motor(mc_x& p_mc_x, hal::rpm p_max_speed);
-  result<hal::motor::power_t> driver_power(float p_power) override;
-  friend result<mc_x_motor> make_motor(mc_x& p_mc_x, hal::rpm p_max_speed);
+  void driver_power(float p_power) override;
+  friend mc_x_motor make_motor(mc_x& p_mc_x, hal::rpm p_max_speed);
   mc_x* m_mc_x = nullptr;
   hal::rpm m_max_speed;
 };
@@ -230,9 +224,9 @@ private:
  * @param p_mc_x - reference to a MC-X driver. This object's lifetime must
  * exceed the lifetime of the returned object.
  * @param p_max_speed - maximum speed of the motor represented by +1.0 and -1.0
- * @return result<mc_x_motor> - motor implementation using the MC-X driver
+ * @return mc_x_motor - motor implementation using the MC-X driver
  */
-result<mc_x_motor> make_motor(mc_x& p_mc_x, hal::rpm p_max_speed);
+mc_x_motor make_motor(mc_x& p_mc_x, hal::rpm p_max_speed);
 
 /**
  * @brief Reports the rotation of the DRC motor
@@ -242,8 +236,8 @@ class mc_x_rotation : public hal::rotation_sensor
 {
 private:
   mc_x_rotation(mc_x& p_mc_x);
-  result<hal::rotation_sensor::read_t> driver_read() override;
-  friend result<mc_x_rotation> make_rotation_sensor(mc_x& p_mc_x);
+  hal::rotation_sensor::read_t driver_read() override;
+  friend mc_x_rotation make_rotation_sensor(mc_x& p_mc_x);
   mc_x* m_mc_x = nullptr;
 };
 
@@ -252,10 +246,10 @@ private:
  *
  * @param p_mc_x - reference to a MC-X driver. This object's lifetime must
  * exceed the lifetime of the returned object.
- * @return result<mc_x_rotation> - rotation sensor implementation based on the
+ * @return mc_x_rotation - rotation sensor implementation based on the
  * MC-X driver
  */
-result<mc_x_rotation> make_rotation_sensor(mc_x& p_mc_x);
+mc_x_rotation make_rotation_sensor(mc_x& p_mc_x);
 
 /**
  * @brief Control a mc_x motor driver like a hal::servo
@@ -265,9 +259,8 @@ class mc_x_servo : public hal::servo
 {
 private:
   mc_x_servo(mc_x& p_mc_x, hal::rpm p_max_speed);
-  result<hal::servo::position_t> driver_position(
-    hal::degrees p_position) override;
-  friend result<mc_x_servo> make_servo(mc_x& p_mc_x, hal::rpm p_max_speed);
+  void driver_position(hal::degrees p_position) override;
+  friend mc_x_servo make_servo(mc_x& p_mc_x, hal::rpm p_max_speed);
   mc_x* m_mc_x = nullptr;
   hal::rpm m_max_speed;
 };
@@ -278,10 +271,10 @@ private:
  * @param p_mc_x - reference to a MC-X driver. This object's lifetime must
  * exceed the lifetime of the returned object.
  * @param p_max_speed - maximum speed of the motor when moving to an angle
- * @return result<mc_x_rotation> - rotation sensor implementation based on the
+ * @return mc_x_rotation - rotation sensor implementation based on the
  * MC-X driver
  */
-result<mc_x_servo> make_servo(mc_x& p_mc_x, hal::rpm p_max_speed);
+mc_x_servo make_servo(mc_x& p_mc_x, hal::rpm p_max_speed);
 
 /**
  * @brief Reports the temperature of the DRC motor
@@ -291,8 +284,8 @@ class mc_x_temperature : public hal::temperature_sensor
 {
 private:
   mc_x_temperature(mc_x& p_mc_x);
-  result<hal::temperature_sensor::read_t> driver_read() override;
-  friend result<mc_x_temperature> make_temperature_sensor(mc_x& p_mc_x);
+  hal::celsius driver_read() override;
+  friend mc_x_temperature make_temperature_sensor(mc_x& p_mc_x);
   mc_x* m_mc_x = nullptr;
 };
 
@@ -301,10 +294,10 @@ private:
  *
  * @param p_mc_x - reference to a MC-X driver. This object's lifetime must
  * exceed the lifetime of the returned object.
- * @return result<mc_x_temperature> - temperature sensor implementation based on
+ * @return mc_x_temperature - temperature sensor implementation based on
  * the MC-X driver
  */
-result<mc_x_temperature> make_temperature_sensor(mc_x& p_mc_x);
+mc_x_temperature make_temperature_sensor(mc_x& p_mc_x);
 
 /**
  * @brief current sensor adaptor for mc_x
@@ -314,8 +307,8 @@ class mc_x_current_sensor : public hal::current_sensor
 {
 private:
   mc_x_current_sensor(mc_x& p_mc_x);
-  result<mc_x_current_sensor::read_t> driver_read() override;
-  friend result<mc_x_current_sensor> make_current_sensor(mc_x& p_mc_x);
+  hal::ampere driver_read() override;
+  friend mc_x_current_sensor make_current_sensor(mc_x& p_mc_x);
   mc_x* m_mc_x = nullptr;
 };
 
@@ -324,11 +317,10 @@ private:
  *
  * @param p_mc_x - reference to a mc_x driver. This object's lifetime must
  * exceed the lifetime of the returned object
- * @return result<mc_x_current_sensor> - current_sensor
- * implementation based on the mc_x driver
+ * @return mc_x_current_sensor - current_sensor implementation based on the mc_x
+ * driver
  */
-result<mc_x_current_sensor> make_current_sensor(mc_x& p_mc_x);
-
+mc_x_current_sensor make_current_sensor(mc_x& p_mc_x);
 }  // namespace hal::rmd
 
 namespace hal {

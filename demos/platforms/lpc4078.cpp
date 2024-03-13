@@ -23,30 +23,29 @@
 
 #include "../hardware_map.hpp"
 
-hal::result<hardware_map> initialize_platform()
+hardware_map_t initialize_platform()
 {
   using namespace hal::literals;
 
   // Set the MCU to the maximum clock speed
-  HAL_CHECK(hal::lpc40::clock::maximum(12.0_MHz));
+  hal::lpc40::maximum(12.0_MHz);
 
-  auto& clock = hal::lpc40::clock::get();
-  auto cpu_frequency = clock.get_frequency(hal::lpc40::peripheral::cpu);
-  static hal::cortex_m::dwt_counter counter(cpu_frequency);
+  static hal::cortex_m::dwt_counter counter(
+    hal::lpc40::get_frequency(hal::lpc40::peripheral::cpu));
 
   static std::array<hal::byte, 64> receive_buffer{};
-  static auto uart0 = HAL_CHECK((hal::lpc40::uart::get(0,
-                                                       receive_buffer,
-                                                       hal::serial::settings{
-                                                         .baud_rate = 38400,
-                                                       })));
+  static hal::lpc40::uart uart0(0,
+                                receive_buffer,
+                                hal::serial::settings{
+                                  .baud_rate = 38400,
+                                });
 
-  static auto can = HAL_CHECK((hal::lpc40::can::get(2,
-                                                    hal::can::settings{
-                                                      .baud_rate = 1.0_MHz,
-                                                    })));
+  static hal::lpc40::can can(2,
+                             hal::can::settings{
+                               .baud_rate = 1.0_MHz,
+                             });
 
-  return hardware_map{
+  return {
     .console = &uart0,
     .can = &can,
     .clock = &counter,

@@ -41,11 +41,11 @@ constexpr auto prefilled_messages(hal::byte p_command_byte = 0x00)
   return prefilled_expected_messages;
 };
 
-std::queue<steady_clock::uptime_t> create_queue()
+std::queue<std::uint64_t> create_queue()
 {
-  std::queue<steady_clock::uptime_t> new_queue;
+  std::queue<std::uint64_t> new_queue;
   for (std::uint64_t i = 0; i < 255; i++) {
-    new_queue.push(steady_clock::uptime_t{ .ticks = i });
+    new_queue.push(i);
   }
   return new_queue;
 }
@@ -73,21 +73,20 @@ struct rmd_responder : public hal::can
   hal::callback<handler> m_on_receive = [](const message_t&) {};
 
 private:
-  status driver_configure(const settings& p_settings) override
+  void driver_configure(const settings& p_settings) override
   {
     return spy_configure.record(p_settings);
   }
 
-  status driver_bus_on() override
+  void driver_bus_on() override
   {
     return spy_bus_on.record(true);
   }
 
-  result<send_t> driver_send(const message_t& p_message) override
+  void driver_send(const message_t& p_message) override
   {
-    HAL_CHECK(spy_send.record(p_message));
+    spy_send.record(p_message);
     m_on_receive(p_message);
-    return send_t{};
   }
 
   void driver_on_receive(hal::callback<handler> p_handler) override
@@ -108,17 +107,14 @@ void drc_test()
     mock::steady_clock mock_steady;
     auto queue = create_queue();
     mock_steady.set_uptimes(queue);
-    mock_steady.set_frequency(
-      steady_clock::frequency_t{ .operating_frequency = 1.0_MHz });
-    auto router = hal::can_router::create(mock_can).value();
+    mock_steady.set_frequency(1.0_MHz);
+    hal::can_router router(mock_can);
     auto expected = prefilled_messages<2>();
     expected[0].payload[0] = hal::value(drc::system::off);
     expected[1].payload[0] = hal::value(drc::system::running);
 
     // Exercise
-    auto driver =
-      drc::create(router, mock_steady, expected_gear_ratio, expected_id)
-        .value();
+    drc driver(router, mock_steady, expected_gear_ratio, expected_id);
 
     // Verify
     expect(that % 2 == mock_can.spy_send.call_history().size());
@@ -132,10 +128,10 @@ void drc_test()
     mock::steady_clock mock_steady;
     auto queue = create_queue();
     mock_steady.set_uptimes(queue);
-    mock_steady.set_frequency(
-      steady_clock::frequency_t{ .operating_frequency = 1.0_MHz });
-    auto router = hal::can_router::create(mock_can).value();
-    mock_can.spy_send.trigger_error_on_call(1);
+    mock_steady.set_frequency(1.0_MHz);
+    hal::can_router router(mock_can);
+    mock_can.spy_send.trigger_error_on_call(
+      1, []() { throw hal::io_error(nullptr); });
 
     constexpr can::message_t expected1{
       .id = expected_id,
@@ -151,8 +147,9 @@ void drc_test()
     };
 
     // Exercise
-    auto driver =
-      drc::create(router, mock_steady, expected_gear_ratio, expected_id);
+    expect(throws<hal::io_error>([&]() {
+      drc driver(router, mock_steady, expected_gear_ratio, expected_id);
+    }));
 
     // Verify
     expect(that % 1 == mock_can.spy_send.call_history().size());
@@ -165,12 +162,9 @@ void drc_test()
     mock::steady_clock mock_steady;
     auto queue = create_queue();
     mock_steady.set_uptimes(queue);
-    mock_steady.set_frequency(
-      steady_clock::frequency_t{ .operating_frequency = 1.0_MHz });
-    auto router = hal::can_router::create(mock_can).value();
-    auto driver =
-      drc::create(router, mock_steady, expected_gear_ratio, expected_id)
-        .value();
+    mock_steady.set_frequency(1.0_MHz);
+    hal::can_router router(mock_can);
+    drc driver(router, mock_steady, expected_gear_ratio, expected_id);
     mock_can.reset();
     auto expected = prefilled_messages<7>(hal::value(drc::actuate::speed));
     std::array injected_rpm{
@@ -197,21 +191,14 @@ void drc_test()
     };
 
     // Exercise
-    auto result0 = driver.velocity_control(injected_rpm[0]);
-    auto result1 = driver.velocity_control(injected_rpm[1]);
-    auto result2 = driver.velocity_control(injected_rpm[2]);
-    auto result3 = driver.velocity_control(injected_rpm[3]);
-    auto result4 = driver.velocity_control(injected_rpm[4]);
-    auto result5 = driver.velocity_control(injected_rpm[5]);
+    driver.velocity_control(injected_rpm[0]);
+    driver.velocity_control(injected_rpm[1]);
+    driver.velocity_control(injected_rpm[2]);
+    driver.velocity_control(injected_rpm[3]);
+    driver.velocity_control(injected_rpm[4]);
+    driver.velocity_control(injected_rpm[5]);
 
     // Verify
-    expect(bool{ result0 });
-    expect(bool{ result1 });
-    expect(bool{ result2 });
-    expect(bool{ result3 });
-    expect(bool{ result4 });
-    expect(bool{ result5 });
-
     expect(that % 6 == mock_can.spy_send.call_history().size());
     expect(that % expected[0] == mock_can.spy_send.history<0>(0));
     expect(that % expected[1] == mock_can.spy_send.history<0>(1));
@@ -221,44 +208,15 @@ void drc_test()
     expect(that % expected[5] == mock_can.spy_send.history<0>(5));
   };
 
-  "drc::velocity_control() fails out of bounds"_test = []() {
-    // Setup
-    rmd_responder mock_can;
-    mock::steady_clock mock_steady;
-    auto queue = create_queue();
-    mock_steady.set_uptimes(queue);
-    mock_steady.set_frequency(
-      steady_clock::frequency_t{ .operating_frequency = 1.0_MHz });
-    auto router = hal::can_router::create(mock_can).value();
-    auto driver =
-      drc::create(router, mock_steady, expected_gear_ratio, expected_id)
-        .value();
-    mock_can.reset();
-
-    attempt_all(
-      [&driver]() -> status {
-        // Exercise
-        return driver.velocity_control(1000000.0_rpm);
-      },
-      // Verify
-      [](match<std::errc, std::errc::invalid_argument>) { expect(true); },
-      []() { expect(false); });
-
-    expect(that % 0 == mock_can.spy_send.call_history().size());
-  };
-
   "drc::position_control()"_test = []() {
     // Setup
     rmd_responder mock_can;
     mock::steady_clock mock_steady;
     auto queue = create_queue();
     mock_steady.set_uptimes(queue);
-    mock_steady.set_frequency(
-      steady_clock::frequency_t{ .operating_frequency = 1.0_MHz });
-    auto router = hal::can_router::create(mock_can).value();
-    auto driver =
-      drc::create(router, mock_steady, expected_gear_ratio, expected_id)
-        .value();
+    mock_steady.set_frequency(1.0_MHz);
+    hal::can_router router(mock_can);
+    drc driver(router, mock_steady, expected_gear_ratio, expected_id);
     mock_can.reset();
     auto expected = prefilled_messages<6>(hal::value(drc::actuate::position_2));
     using payload_t = decltype(expected[0].payload);
@@ -284,21 +242,14 @@ void drc_test()
     };
 
     // Exercise
-    auto result0 = driver.position_control(0.0_deg, 10.0_rpm);
-    auto result1 = driver.position_control(45.0_deg, 10.0_rpm);
-    auto result2 = driver.position_control(90.0_deg, 10.0_rpm);
-    auto result3 = driver.position_control(12.0_deg, 10.0_rpm);
-    auto result4 = driver.position_control(-15.0_deg, 10.0_rpm);
-    auto result5 = driver.position_control(-680.0_deg, 10.0_rpm);
+    driver.position_control(0.0_deg, 10.0_rpm);
+    driver.position_control(45.0_deg, 10.0_rpm);
+    driver.position_control(90.0_deg, 10.0_rpm);
+    driver.position_control(12.0_deg, 10.0_rpm);
+    driver.position_control(-15.0_deg, 10.0_rpm);
+    driver.position_control(-680.0_deg, 10.0_rpm);
 
     // Verify
-    expect(bool{ result0 });
-    expect(bool{ result1 });
-    expect(bool{ result2 });
-    expect(bool{ result3 });
-    expect(bool{ result4 });
-    expect(bool{ result5 });
-
     expect(that % expected[0] == mock_can.spy_send.history<0>(0));
     expect(that % expected[1] == mock_can.spy_send.history<0>(1));
     expect(that % expected[2] == mock_can.spy_send.history<0>(2));
@@ -307,50 +258,15 @@ void drc_test()
     expect(that % expected[5] == mock_can.spy_send.history<0>(5));
   };
 
-  "drc::position_control() fails"_test = []() {
-    // Setup
-    rmd_responder mock_can;
-    mock::steady_clock mock_steady;
-    auto queue = create_queue();
-    mock_steady.set_uptimes(queue);
-    mock_steady.set_frequency(
-      steady_clock::frequency_t{ .operating_frequency = 1.0_MHz });
-    auto router = hal::can_router::create(mock_can).value();
-    auto driver =
-      drc::create(router, mock_steady, expected_gear_ratio, expected_id)
-        .value();
-
-    // Exercise
-    attempt_all(
-      [&driver]() -> status {
-        return driver.position_control(1000000.0_deg, 10.0_rpm);
-      },
-      // Verify
-      [](match<std::errc, std::errc::invalid_argument>) { expect(true); },
-      []() { expect(false); });
-
-    attempt_all(
-      [&driver]() -> status {
-        // Exercise
-        return driver.position_control(0.0_deg, 1000000.0_rpm);
-      },
-      // Verify
-      [](match<std::errc, std::errc::invalid_argument>) { expect(true); },
-      []() { expect(false); });
-  };
-
   "drc::feedback_request()"_test = []() {
     // Setup
     rmd_responder mock_can;
     mock::steady_clock mock_steady;
     auto queue = create_queue();
     mock_steady.set_uptimes(queue);
-    mock_steady.set_frequency(
-      steady_clock::frequency_t{ .operating_frequency = 1.0_MHz });
-    auto router = hal::can_router::create(mock_can).value();
-    auto driver =
-      drc::create(router, mock_steady, expected_gear_ratio, expected_id)
-        .value();
+    mock_steady.set_frequency(1.0_MHz);
+    hal::can_router router(mock_can);
+    drc driver(router, mock_steady, expected_gear_ratio, expected_id);
     mock_can.reset();
 
     auto expected = prefilled_messages<3>();
@@ -360,43 +276,15 @@ void drc_test()
     expected[2].payload[0] = hal::value(drc::read::status_2);
 
     // Exercise
-    auto result0 = driver.feedback_request(drc::read::multi_turns_angle);
-    auto result1 = driver.feedback_request(drc::read::status_1_and_error_flags);
-    auto result2 = driver.feedback_request(drc::read::status_2);
+    driver.feedback_request(drc::read::multi_turns_angle);
+    driver.feedback_request(drc::read::status_1_and_error_flags);
+    driver.feedback_request(drc::read::status_2);
 
     // Verify
-    expect(bool{ result0 });
-    expect(bool{ result1 });
-    expect(bool{ result2 });
-
     expect(that % 3 == mock_can.spy_send.call_history().size());
     expect(that % expected[0] == mock_can.spy_send.history<0>(0));
     expect(that % expected[1] == mock_can.spy_send.history<0>(1));
     expect(that % expected[2] == mock_can.spy_send.history<0>(2));
-  };
-
-  "drc::feedback_request() fails"_test = []() {
-    // Setup
-    rmd_responder mock_can;
-    mock::steady_clock mock_steady;
-    auto queue = create_queue();
-    mock_steady.set_uptimes(queue);
-    mock_steady.set_frequency(
-      steady_clock::frequency_t{ .operating_frequency = 1.0_MHz });
-    auto router = hal::can_router::create(mock_can).value();
-    auto driver =
-      drc::create(router, mock_steady, expected_gear_ratio, expected_id)
-        .value();
-
-    mock_can.spy_send.reset();
-    mock_can.spy_send.trigger_error_on_call(1);
-
-    // Exercise
-    auto result = driver.feedback_request(drc::read::multi_turns_angle);
-
-    // Verify
-    expect(!bool{ result });
-    expect(that % 1 == mock_can.spy_send.call_history().size());
   };
 
   "drc::system_control()"_test = []() {
@@ -405,12 +293,9 @@ void drc_test()
     mock::steady_clock mock_steady;
     auto queue = create_queue();
     mock_steady.set_uptimes(queue);
-    mock_steady.set_frequency(
-      steady_clock::frequency_t{ .operating_frequency = 1.0_MHz });
-    auto router = hal::can_router::create(mock_can).value();
-    auto driver =
-      drc::create(router, mock_steady, expected_gear_ratio, expected_id)
-        .value();
+    mock_steady.set_frequency(1.0_MHz);
+    hal::can_router router(mock_can);
+    drc driver(router, mock_steady, expected_gear_ratio, expected_id);
     mock_can.reset();
 
     auto expected = prefilled_messages<4>();
@@ -421,46 +306,17 @@ void drc_test()
     expected[3].payload[0] = hal::value(drc::system::running);
 
     // Exercise
-    auto result0 = driver.system_control(drc::system::clear_error_flag);
-    auto result1 = driver.system_control(drc::system::off);
-    auto result2 = driver.system_control(drc::system::stop);
-    auto result3 = driver.system_control(drc::system::running);
+    driver.system_control(drc::system::clear_error_flag);
+    driver.system_control(drc::system::off);
+    driver.system_control(drc::system::stop);
+    driver.system_control(drc::system::running);
 
     // Verify
-    expect(bool{ result0 });
-    expect(bool{ result1 });
-    expect(bool{ result2 });
-    expect(bool{ result3 });
-
     expect(that % 4 == mock_can.spy_send.call_history().size());
     expect(that % expected[0] == mock_can.spy_send.history<0>(0));
     expect(that % expected[1] == mock_can.spy_send.history<0>(1));
     expect(that % expected[2] == mock_can.spy_send.history<0>(2));
     expect(that % expected[3] == mock_can.spy_send.history<0>(3));
-  };
-
-  "drc::system_control() fails"_test = []() {
-    // Setup
-    rmd_responder mock_can;
-    mock::steady_clock mock_steady;
-    auto queue = create_queue();
-    mock_steady.set_uptimes(queue);
-    mock_steady.set_frequency(
-      steady_clock::frequency_t{ .operating_frequency = 1.0_MHz });
-    auto router = hal::can_router::create(mock_can).value();
-    auto driver =
-      drc::create(router, mock_steady, expected_gear_ratio, expected_id)
-        .value();
-
-    mock_can.spy_send.reset();
-    mock_can.spy_send.trigger_error_on_call(1);
-
-    // Exercise
-    auto result = driver.system_control(drc::system::clear_error_flag);
-
-    // Verify
-    expect(!bool{ result });
-    expect(that % 1 == mock_can.spy_send.call_history().size());
   };
 
   "drc::operator() update feedback status_2 "_test = []() {
@@ -469,12 +325,9 @@ void drc_test()
     mock::steady_clock mock_steady;
     auto queue = create_queue();
     mock_steady.set_uptimes(queue);
-    mock_steady.set_frequency(
-      steady_clock::frequency_t{ .operating_frequency = 1.0_MHz });
-    auto router = hal::can_router::create(mock_can).value();
-    auto driver =
-      drc::create(router, mock_steady, expected_gear_ratio, expected_id)
-        .value();
+    mock_steady.set_frequency(1.0_MHz);
+    hal::can_router router(mock_can);
+    drc driver(router, mock_steady, expected_gear_ratio, expected_id);
 
     auto expected = prefilled_messages<1>();
     expected[0].payload[0] = hal::value(drc::read::status_2);
@@ -504,18 +357,16 @@ void drc_test()
     mock::steady_clock mock_steady;
     auto queue = create_queue();
     mock_steady.set_uptimes(queue);
-    mock_steady.set_frequency(
-      steady_clock::frequency_t{ .operating_frequency = 1.0_MHz });
-    auto router = hal::can_router::create(mock_can).value();
-
-    hal::rmd::drc* drc = nullptr;
+    mock_steady.set_frequency(1.0_MHz);
+    hal::can_router router(mock_can);
+    drc driver(router, mock_steady, expected_gear_ratio, expected_id);
 
     // Exercise
     // Verify
-    [[maybe_unused]] auto motor = hal::make_motor(*drc, 100.0_rpm).value();
-    [[maybe_unused]] auto servo = hal::make_servo(*drc, 100.0_rpm).value();
-    [[maybe_unused]] auto temp = hal::make_temperature_sensor(*drc).value();
-    [[maybe_unused]] auto rotation = hal::make_rotation_sensor(*drc).value();
+    auto motor = hal::make_motor(driver, 100.0_rpm);
+    auto servo = hal::make_servo(driver, 100.0_rpm);
+    auto temp = hal::make_temperature_sensor(driver);
+    auto rotation = hal::make_rotation_sensor(driver);
   };
 };
 }  // namespace hal::rmd
