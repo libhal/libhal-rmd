@@ -148,41 +148,37 @@ public:
   };
 
   /**
-   * @brief Create a new drc device driver
+   * @brief Create a new device driver drc
    *
    * This factory function will power cycle the motor
    *
    * @param p_router - can router to use
    * @param p_clock - clocked used to determine timeouts
    * @param p_gear_ratio - gear ratio of the motor
-   * @param device_id - The CAN ID of the motor
+   * @param p_device_id - The CAN ID of the motor
    * @param p_max_response_time - maximum amount of time to wait for a response
    * from the motor.
-   * @return result<drc> - the drc driver or an error
-   * @throws std::errc::timed_out - a response is not returned within the max
-   * response time when attempting to power cycle.
+   * @throws hal::timed_out - if the p_max_response_time is exceeded
    */
-  [[nodiscard]] static result<drc> create(
-    hal::can_router& p_router,
-    hal::steady_clock& p_clock,
-    float p_gear_ratio,
-    can::id_t device_id,
-    hal::time_duration p_max_response_time = std::chrono::milliseconds(10));
+  drc(hal::can_router& p_router,
+      hal::steady_clock& p_clock,
+      float p_gear_ratio,
+      can::id_t p_device_id,
+      hal::time_duration p_max_response_time = std::chrono::milliseconds(10));
 
-  drc(drc& p_other) = delete;
-  drc& operator=(drc& p_other) = delete;
-  drc(drc&& p_other) noexcept;
-  drc& operator=(drc&& p_other) noexcept;
+  drc(drc&) = delete;
+  drc& operator=(drc&) = delete;
+  drc(drc&&) noexcept = delete;
+  drc& operator=(drc&&) noexcept = delete;
 
   /**
    * @brief Request feedback from the motor
    *
    * @param p_command - the request to command the motor to respond with
-   * @return status - success or failure
-   * @throws std::errc::timed_out - if a response is not returned within the max
+   * @throws hal::timed_out - if a response is not returned within the max
    * response time set at creation.
    */
-  [[nodiscard]] status feedback_request(read p_command);
+  void feedback_request(read p_command);
 
   /**
    * @brief Rotate motor shaft at the designated speed
@@ -190,32 +186,30 @@ public:
    * @param p_speed - speed in rpm to move the motor shaft at. Positive values
    * rotate the motor shaft clockwise, negative values rotate the motor shaft
    * counter-clockwise assuming you are looking directly at the motor shaft.
-   * @return status - success or failure
-   * @throws std::errc::timed_out - if a response is not returned within the max
+   * @throws hal::timed_out - if a response is not returned within the max
    * response time set at creation.
    */
-  [[nodiscard]] status velocity_control(rpm p_speed);
+  void velocity_control(rpm p_speed);
 
   /**
    * @brief Move motor shaft to a specific angle
    *
    * @param p_angle - angle position in degrees to move to
-   * @param speed - maximum speed in rpm's
-   * @return status - success or failure
-   * @throws std::errc::timed_out - if a response is not returned within the max
+   * @param p_speed - maximum speed in rpm's
+   * @throws hal::timed_out - if a response is not returned within the max
    * response time set at creation.
    */
-  [[nodiscard]] status position_control(degrees p_angle, rpm speed);
+  void position_control(degrees p_angle, rpm p_speed);
 
   /**
    * @brief Send system control commands to the device
    *
    * @param p_system_command - system control command to send to the device
-   * @return status - success or failure status
-   * @throws std::errc::timed_out - if a response is not returned within the max
+   * status.
+   * @throws hal::timed_out - if a response is not returned within the max
    * response time set at creation.
    */
-  [[nodiscard]] status system_control(system p_system_command);
+  void system_control(system p_system_command);
 
   const feedback_t& feedback() const;
 
@@ -229,13 +223,12 @@ public:
   void operator()(const can::message_t& p_message);
 
 private:
-  drc(hal::can_router& p_router,
-      hal::steady_clock& p_clock,
-      float p_gear_ratio,
-      can::id_t p_device_id,
-      hal::time_duration p_max_response_time);
-
-  friend struct response_waiter;
+  /**
+   * @brief Send command on can bus to the motor using its device ID
+   *
+   * @param p_payload - command data to be sent to the device
+   */
+  void send(std::array<hal::byte, 8> p_payload);
 
   feedback_t m_feedback{};
   hal::steady_clock* m_clock;
@@ -254,8 +247,8 @@ class drc_rotation_sensor : public hal::rotation_sensor
 {
 private:
   drc_rotation_sensor(drc& p_drc);
-  result<hal::rotation_sensor::read_t> driver_read() override;
-  friend result<drc_rotation_sensor> make_rotation_sensor(drc& p_drc);
+  hal::rotation_sensor::read_t driver_read() override;
+  friend drc_rotation_sensor make_rotation_sensor(drc& p_drc);
   drc* m_drc = nullptr;
 };
 
@@ -266,7 +259,7 @@ private:
  * exceed the lifetime of the returned object.
  * @return drc_rotation_sensor - motor implementation based on the drc driver
  */
-result<drc_rotation_sensor> make_rotation_sensor(drc& p_drc);
+drc_rotation_sensor make_rotation_sensor(drc& p_drc);
 
 /**
  * @brief Temperature sensor adaptor for DRC motors
@@ -276,19 +269,20 @@ class drc_temperature_sensor : public hal::temperature_sensor
 {
 private:
   drc_temperature_sensor(drc& p_drc);
-  result<read_t> driver_read() override;
-  friend result<drc_temperature_sensor> make_temperature_sensor(drc& p_drc);
+  celsius driver_read() override;
+  friend drc_temperature_sensor make_temperature_sensor(drc& p_drc);
   drc* m_drc = nullptr;
 };
+
 /**
  * @brief Create a hal::temperature_sensor driver using the drc driver
  *
  * @param p_drc - reference to a drc driver. This object's lifetime must exceed
  * the lifetime of the returned object.
- * @return result<drc_temperature_sensor> - temperature sensor implementation
- * based on the drc driver.
+ * @return drc_temperature_sensor - temperature sensor implementation based on
+ * the drc driver.
  */
-result<drc_temperature_sensor> make_temperature_sensor(drc& p_drc);
+drc_temperature_sensor make_temperature_sensor(drc& p_drc);
 
 /**
  * @brief Motor interface adaptor for DRC
@@ -296,12 +290,10 @@ result<drc_temperature_sensor> make_temperature_sensor(drc& p_drc);
  */
 class drc_motor : public hal::motor
 {
-public:
-  friend result<drc_motor> make_motor(drc& p_drc, hal::rpm p_max_speed);
-
 private:
   drc_motor(drc& p_drc, hal::rpm p_max_speed);
-  result<power_t> driver_power(float p_power) override;
+  void driver_power(float p_power) override;
+  friend drc_motor make_motor(drc& p_drc, hal::rpm p_max_speed);
 
   drc* m_drc = nullptr;
   hal::rpm m_max_speed;
@@ -316,7 +308,7 @@ private:
  * -1.0
  * @return drc_motor - motor implementation based on the drc driver
  */
-result<drc_motor> make_motor(drc& p_drc, hal::rpm p_max_speed);
+drc_motor make_motor(drc& p_drc, hal::rpm p_max_speed);
 
 /**
  * @brief Servo interface adaptor for DRC
@@ -326,8 +318,8 @@ class drc_servo : public hal::servo
 {
 private:
   drc_servo(drc& p_drc, hal::rpm p_max_speed);
-  result<position_t> driver_position(hal::degrees p_position) override;
-  friend result<drc_servo> make_servo(drc& p_drc, hal::rpm p_max_speed);
+  void driver_position(hal::degrees p_position) override;
+  friend drc_servo make_servo(drc& p_drc, hal::rpm p_max_speed);
   drc* m_drc = nullptr;
   hal::rpm m_max_speed;
 };
@@ -338,9 +330,9 @@ private:
  * @param p_drc - reference to a drc driver. This object's lifetime must
  * exceed the lifetime of the returned object.
  * @param p_max_speed - maximum speed of the servo when moving to an angle
- * @return result<drc_servo> - servo implementation based on the drc driver
+ * @return drc_servo - servo implementation based on the drc driver
  */
-result<drc_servo> make_servo(drc& p_drc, hal::rpm p_max_speed);
+drc_servo make_servo(drc& p_drc, hal::rpm p_max_speed);
 
 /**
  * @brief angular velocity sensor adaptor for DRC
@@ -350,9 +342,8 @@ class drc_angular_velocity_sensor : public hal::angular_velocity_sensor
 {
 private:
   drc_angular_velocity_sensor(drc& p_drc);
-  result<angular_velocity_sensor::read_t> driver_read() override;
-  friend result<drc_angular_velocity_sensor> make_angular_velocity_sensor(
-    drc& p_drc);
+  hal::rpm driver_read() override;
+  friend drc_angular_velocity_sensor make_angular_velocity_sensor(drc& p_drc);
   drc* m_drc = nullptr;
 };
 
@@ -361,11 +352,10 @@ private:
  *
  * @param p_drc - reference to a drc driver. This object's lifetime must exceed
  * the lifetime of the returned object
- * @return result<angular_velocity_sensor> - angular_velocity_sensor
- * implementation based on the drc driver
+ * @return angular_velocity_sensor - angular_velocity_sensor implementation
+ * based on the drc driver
  */
-result<drc_angular_velocity_sensor> make_angular_velocity_sensor(drc& p_drc);
-
+drc_angular_velocity_sensor make_angular_velocity_sensor(drc& p_drc);
 }  // namespace hal::rmd
 
 namespace hal {

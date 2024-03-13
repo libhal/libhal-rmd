@@ -26,43 +26,6 @@
 
 namespace hal::rmd {
 
-struct response_waiter
-{
-  using message_t = decltype(mc_x::feedback_t::message_number);
-  response_waiter(mc_x* p_this)
-    : m_this(p_this)
-  {
-    m_original_message_number = m_this->feedback().message_number;
-  }
-  hal::status wait()
-  {
-    auto timeout =
-      hal::create_timeout(*m_this->m_clock, m_this->m_max_response_time);
-    while (true) {
-      if (m_original_message_number != m_this->feedback().message_number) {
-        return hal::success();
-      }
-      HAL_CHECK(timeout());
-    }
-  }
-  message_t m_original_message_number{ 0 };
-  mc_x* m_this;
-};
-
-template<std::integral T>
-result<T> bounds_check(std::floating_point auto p_float)
-{
-  using float_t = decltype(p_float);
-  constexpr auto min = static_cast<float_t>(std::numeric_limits<T>::min());
-  constexpr auto max = static_cast<float_t>(std::numeric_limits<T>::max());
-
-  if (min < p_float && p_float < max) {
-    return static_cast<T>(p_float);
-  }
-
-  return new_error(std::errc::result_out_of_range);
-}
-
 hal::ampere mc_x::feedback_t::current() const noexcept
 {
   static constexpr auto amps_per_lsb = 0.1_A;
@@ -125,49 +88,6 @@ bool mc_x::feedback_t::encoder_calibration_error() const noexcept
   return raw_error_state & encoder_calibration_error_mask;
 }
 
-result<mc_x> mc_x::create(hal::can_router& p_router,
-                          hal::steady_clock& p_clock,
-                          float p_gear_ratio,
-                          can::id_t device_id,
-                          hal::time_duration p_max_response_time)
-{
-  mc_x mc_x_driver(
-    p_router, p_clock, p_gear_ratio, device_id, p_max_response_time);
-  return mc_x_driver;
-}
-
-mc_x::mc_x(mc_x&& p_other) noexcept
-  : m_feedback(p_other.m_feedback)
-  , m_clock(p_other.m_clock)
-  , m_router(p_other.m_router)
-  , m_route_item(std::move(p_other.m_route_item))
-  , m_gear_ratio(p_other.m_gear_ratio)
-  , m_device_id(p_other.m_device_id)
-  , m_max_response_time(p_other.m_max_response_time)
-{
-  m_route_item.get().handler = std::ref(*this);
-}
-
-mc_x& mc_x::operator=(mc_x&& p_other) noexcept
-{
-  m_feedback = p_other.m_feedback;
-  m_clock = p_other.m_clock;
-  m_router = p_other.m_router;
-  m_route_item = std::move(p_other.m_route_item);
-  m_gear_ratio = p_other.m_gear_ratio;
-  m_device_id = p_other.m_device_id;
-  m_max_response_time = p_other.m_max_response_time;
-
-  m_route_item.get().handler = std::ref(*this);
-
-  return *this;
-}
-
-const mc_x::feedback_t& mc_x::feedback() const
-{
-  return m_feedback;
-}
-
 mc_x::mc_x(hal::can_router& p_router,
            hal::steady_clock& p_clock,
            float p_gear_ratio,  // NOLINT
@@ -183,100 +103,102 @@ mc_x::mc_x(hal::can_router& p_router,
   , m_max_response_time(p_max_response_time)
 {
   m_route_item.get().handler = std::ref(*this);
+  // TODO(#3): determine if the device actually exists before fully constructing
+  // this object.
 }
 
-result<std::int32_t> rpm_to_mc_x_speed(rpm p_rpm, float p_dps_per_lsb)
+void mc_x::send(std::array<hal::byte, 8> p_payload)
+{
+  // Capture the message number prior to the send command
+  auto original_message_number = feedback().message_number;
+
+  // Send payload
+  m_router->bus().send(message(m_device_id, p_payload));
+
+  // Wait for the message number to increment
+  auto timeout = hal::create_timeout(*m_clock, m_max_response_time);
+  while (true) {
+    if (original_message_number != feedback().message_number) {
+      return;
+    }
+    timeout();
+  }
+}
+
+std::int32_t rpm_to_mc_x_speed(rpm p_rpm, float p_dps_per_lsb)
 {
   static constexpr float dps_per_rpm = (1.0f / 1.0_deg_per_sec);
   const float dps_float = (p_rpm * dps_per_rpm) / p_dps_per_lsb;
   return bounds_check<std::int32_t>(dps_float);
 }
 
-status mc_x::velocity_control(rpm p_rpm)
+void mc_x::velocity_control(rpm p_rpm)
 {
-  response_waiter response(this);
+  const auto speed_data = rpm_to_mc_x_speed(p_rpm, dps_per_lsb_speed);
 
-  const auto speed_data =
-    HAL_CHECK(rpm_to_mc_x_speed(p_rpm, dps_per_lsb_speed));
-
-  HAL_CHECK(m_router->bus().send(
-    message(m_device_id,
-            {
-              hal::value(actuate::speed),
-              0x00,
-              0x00,
-              0x00,
-              static_cast<hal::byte>((speed_data >> 0) & 0xFF),
-              static_cast<hal::byte>((speed_data >> 8) & 0xFF),
-              static_cast<hal::byte>((speed_data >> 16) & 0xFF),
-              static_cast<hal::byte>((speed_data >> 24) & 0xFF),
-            })));
-
-  return response.wait();
+  send({
+    hal::value(actuate::speed),
+    0x00,
+    0x00,
+    0x00,
+    static_cast<hal::byte>((speed_data >> 0) & 0xFF),
+    static_cast<hal::byte>((speed_data >> 8) & 0xFF),
+    static_cast<hal::byte>((speed_data >> 16) & 0xFF),
+    static_cast<hal::byte>((speed_data >> 24) & 0xFF),
+  });
 }
 
-status mc_x::position_control(degrees p_angle, rpm p_rpm)  // NOLINT
+void mc_x::position_control(degrees p_angle, rpm p_rpm)  // NOLINT
 {
-  response_waiter response(this);
-
   static constexpr float deg_per_lsb = 0.01f;
   const auto angle = p_angle / deg_per_lsb;
-  const auto angle_data = HAL_CHECK(bounds_check<std::int32_t>(angle));
-  const auto speed_data = HAL_CHECK(
-    rpm_to_mc_x_speed(std::abs(p_rpm * m_gear_ratio), dps_per_lsb_angle));
+  const auto angle_data = bounds_check<std::int32_t>(angle);
+  const auto speed_data =
+    rpm_to_mc_x_speed(std::abs(p_rpm * m_gear_ratio), dps_per_lsb_angle);
 
-  HAL_CHECK(m_router->bus().send(
-    message(m_device_id,
-            {
-              hal::value(actuate::position),
-              0x00,
-              static_cast<hal::byte>((speed_data >> 0) & 0xFF),
-              static_cast<hal::byte>((speed_data >> 8) & 0xFF),
-              static_cast<hal::byte>((angle_data >> 0) & 0xFF),
-              static_cast<hal::byte>((angle_data >> 8) & 0xFF),
-              static_cast<hal::byte>((angle_data >> 16) & 0xFF),
-              static_cast<hal::byte>((angle_data >> 24) & 0xFF),
-            })));
-
-  return response.wait();
+  send({
+    hal::value(actuate::position),
+    0x00,
+    static_cast<hal::byte>((speed_data >> 0) & 0xFF),
+    static_cast<hal::byte>((speed_data >> 8) & 0xFF),
+    static_cast<hal::byte>((angle_data >> 0) & 0xFF),
+    static_cast<hal::byte>((angle_data >> 8) & 0xFF),
+    static_cast<hal::byte>((angle_data >> 16) & 0xFF),
+    static_cast<hal::byte>((angle_data >> 24) & 0xFF),
+  });
 }
 
-status mc_x::feedback_request(read p_command)
+void mc_x::feedback_request(read p_command)
 {
-  response_waiter response(this);
-
-  HAL_CHECK(m_router->bus().send(message(m_device_id,
-                                         {
-                                           hal::value(p_command),
-                                           0x00,
-                                           0x00,
-                                           0x00,
-                                           0x00,
-                                           0x00,
-                                           0x00,
-                                           0x00,
-                                         })));
-
-  return response.wait();
+  send({
+    hal::value(p_command),
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+  });
 }
 
-status mc_x::system_control(system p_system_command)
+void mc_x::system_control(system p_system_command)
 {
-  response_waiter response(this);
+  send({
+    hal::value(p_system_command),
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+  });
+}
 
-  HAL_CHECK(m_router->bus().send(message(m_device_id,
-                                         {
-                                           hal::value(p_system_command),
-                                           0x00,
-                                           0x00,
-                                           0x00,
-                                           0x00,
-                                           0x00,
-                                           0x00,
-                                           0x00,
-                                         })));
-
-  return response.wait();
+const mc_x::feedback_t& mc_x::feedback() const
+{
+  return m_feedback;
 }
 
 void mc_x::operator()(const can::message_t& p_message)
@@ -318,7 +240,5 @@ void mc_x::operator()(const can::message_t& p_message)
     default:
       return;
   }
-
-  return;
 }
 }  // namespace hal::rmd
