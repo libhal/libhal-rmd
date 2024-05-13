@@ -26,13 +26,13 @@ class libhal_rmd_conan(ConanFile):
     topics = ("servo", "smart servo", "PID")
     settings = "compiler", "os", "build_type", "arch"
 
-    python_requires = "libhal-bootstrap/[^1.0.0]"
+    python_requires = "libhal-bootstrap/[^2.0.0]"
     python_requires_extend = "libhal-bootstrap.library"
 
     def requirements(self):
         bootstrap = self.python_requires["libhal-bootstrap"]
         bootstrap.module.add_library_requirements(self)
-        self.requires("libhal-canrouter/[^2.0.0]")
+        self.requires("libhal-canrouter/[^3.0.0]")
 
     def package_info(self):
         self.cpp_info.libs = ["libhal-rmd"]
