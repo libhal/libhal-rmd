@@ -211,7 +211,7 @@ public:
    */
   void system_control(system p_system_command);
 
-  const feedback_t& feedback() const;
+  feedback_t const& feedback() const;
 
   /**
    * @brief Handle messages from the canbus with this devices ID
@@ -220,7 +220,7 @@ public:
    *
    * @param p_message - message received from the bus
    */
-  void operator()(const can::message_t& p_message);
+  void operator()(can::message_t const& p_message);
 
 private:
   /**

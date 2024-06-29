@@ -70,10 +70,10 @@ struct rmd_responder : public hal::can
   /// Spy handler for hal::can::bus_on() will always have content of "true"
   spy_handler<bool> spy_bus_on;
   /// Spy handler for hal::can::on_receive()
-  hal::callback<handler> m_on_receive = [](const message_t&) {};
+  hal::callback<handler> m_on_receive = [](message_t const&) {};
 
 private:
-  void driver_configure(const settings& p_settings) override
+  void driver_configure(settings const& p_settings) override
   {
     return spy_configure.record(p_settings);
   }
@@ -83,7 +83,7 @@ private:
     return spy_bus_on.record(true);
   }
 
-  void driver_send(const message_t& p_message) override
+  void driver_send(message_t const& p_message) override
   {
     spy_send.record(p_message);
     m_on_receive(p_message);
