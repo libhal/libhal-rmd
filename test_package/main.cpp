@@ -17,7 +17,7 @@
 class do_nothing_can : public hal::can
 {
 public:
-  void driver_configure(const settings&) override
+  void driver_configure(settings const&) override
   {
   }
 
@@ -25,7 +25,7 @@ public:
   {
   }
 
-  void driver_send(const message_t&) override
+  void driver_send(message_t const&) override
   {
   }
 
@@ -48,7 +48,7 @@ public:
   std::uint64_t m_counter = 0;
 };
 
-volatile bool run = false;
+bool volatile run = false;
 int main()
 {
   if (run) {

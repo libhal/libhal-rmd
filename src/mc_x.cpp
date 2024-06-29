@@ -128,13 +128,13 @@ void mc_x::send(std::array<hal::byte, 8> p_payload)
 std::int32_t rpm_to_mc_x_speed(rpm p_rpm, float p_dps_per_lsb)
 {
   static constexpr float dps_per_rpm = (1.0f / 1.0_deg_per_sec);
-  const float dps_float = (p_rpm * dps_per_rpm) / p_dps_per_lsb;
+  float const dps_float = (p_rpm * dps_per_rpm) / p_dps_per_lsb;
   return bounds_check<std::int32_t>(dps_float);
 }
 
 void mc_x::velocity_control(rpm p_rpm)
 {
-  const auto speed_data = rpm_to_mc_x_speed(p_rpm, dps_per_lsb_speed);
+  auto const speed_data = rpm_to_mc_x_speed(p_rpm, dps_per_lsb_speed);
 
   send({
     hal::value(actuate::speed),
@@ -151,9 +151,9 @@ void mc_x::velocity_control(rpm p_rpm)
 void mc_x::position_control(degrees p_angle, rpm p_rpm)  // NOLINT
 {
   static constexpr float deg_per_lsb = 0.01f;
-  const auto angle = p_angle / deg_per_lsb;
-  const auto angle_data = bounds_check<std::int32_t>(angle);
-  const auto speed_data =
+  auto const angle = p_angle / deg_per_lsb;
+  auto const angle_data = bounds_check<std::int32_t>(angle);
+  auto const speed_data =
     rpm_to_mc_x_speed(std::abs(p_rpm * m_gear_ratio), dps_per_lsb_angle);
 
   send({
@@ -196,12 +196,12 @@ void mc_x::system_control(system p_system_command)
   });
 }
 
-const mc_x::feedback_t& mc_x::feedback() const
+mc_x::feedback_t const& mc_x::feedback() const
 {
   return m_feedback;
 }
 
-void mc_x::operator()(const can::message_t& p_message)
+void mc_x::operator()(can::message_t const& p_message)
 {
   m_feedback.message_number++;
 

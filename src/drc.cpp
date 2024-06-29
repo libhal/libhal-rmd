@@ -70,7 +70,7 @@ bool drc::feedback_t::over_temperature_protection_tripped() const noexcept
   return raw_error_state & over_temperature_protection_tripped_mask;
 }
 
-const drc::feedback_t& drc::feedback() const
+drc::feedback_t const& drc::feedback() const
 {
   return m_feedback;
 }
@@ -100,7 +100,7 @@ std::int32_t rpm_to_drc_speed(rpm p_rpm,
 {
   static constexpr float dps_per_rpm = (1.0f / 1.0_deg_per_sec);
 
-  const float dps_float = (p_rpm * p_gear_ratio * dps_per_rpm) / p_dps_per_lsb;
+  float const dps_float = (p_rpm * p_gear_ratio * dps_per_rpm) / p_dps_per_lsb;
 
   return bounds_check<std::int32_t>(dps_float);
 }
@@ -125,7 +125,7 @@ void drc::send(std::array<hal::byte, 8> p_payload)
 
 void drc::velocity_control(rpm p_rpm)
 {
-  const auto speed_data =
+  auto const speed_data =
     rpm_to_drc_speed(p_rpm, m_gear_ratio, dps_per_lsb_speed);
 
   send({
@@ -143,9 +143,9 @@ void drc::velocity_control(rpm p_rpm)
 void drc::position_control(degrees p_angle, rpm p_rpm)  // NOLINT
 {
   static constexpr float deg_per_lsb = 0.01f;
-  const auto angle = (p_angle * m_gear_ratio) / deg_per_lsb;
-  const auto angle_data = bounds_check<std::int32_t>(angle);
-  const auto speed_data =
+  auto const angle = (p_angle * m_gear_ratio) / deg_per_lsb;
+  auto const angle_data = bounds_check<std::int32_t>(angle);
+  auto const speed_data =
     rpm_to_drc_speed(p_rpm, m_gear_ratio, dps_per_lsb_angle);
 
   send({
@@ -188,7 +188,7 @@ void drc::system_control(system p_system_command)
   });
 }
 
-void drc::operator()(const can::message_t& p_message)
+void drc::operator()(can::message_t const& p_message)
 {
   m_feedback.message_number++;
 

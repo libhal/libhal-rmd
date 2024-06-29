@@ -136,7 +136,7 @@ public:
    * @throws hal::timed_out - if a response is not returned within the max
    * response time set at creation.
    */
-  const feedback_t& feedback() const;
+  feedback_t const& feedback() const;
 
   /**
    * @brief Request feedback from the motor
@@ -185,7 +185,7 @@ public:
    *
    * @param p_message - message received from the bus
    */
-  void operator()(const can::message_t& p_message);
+  void operator()(can::message_t const& p_message);
 
 private:
   /**

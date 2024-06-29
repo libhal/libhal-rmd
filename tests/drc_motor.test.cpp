@@ -25,7 +25,7 @@ namespace {
 struct drc_inert_can : public hal::can
 {
 private:
-  void driver_configure(const settings&) override
+  void driver_configure(settings const&) override
   {
   }
 
@@ -33,7 +33,7 @@ private:
   {
   }
 
-  void driver_send(const message_t&) override
+  void driver_send(message_t const&) override
   {
   }
 
