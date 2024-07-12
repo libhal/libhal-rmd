@@ -16,6 +16,7 @@
 
 #include <libhal/can.hpp>
 #include <libhal/functional.hpp>
+#include <libhal/output_pin.hpp>
 #include <libhal/serial.hpp>
 #include <libhal/steady_clock.hpp>
 
@@ -24,6 +25,7 @@ struct hardware_map_t
   hal::serial* console;
   hal::can* can;
   hal::steady_clock* clock;
+  hal::output_pin* status_led;
   hal::callback<void()> reset;
 };
 

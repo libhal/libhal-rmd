@@ -19,6 +19,7 @@
 #include <libhal-lpc40/can.hpp>
 #include <libhal-lpc40/clock.hpp>
 #include <libhal-lpc40/constants.hpp>
+#include <libhal-lpc40/output_pin.hpp>
 #include <libhal-lpc40/uart.hpp>
 
 #include "../hardware_map.hpp"
@@ -45,10 +46,13 @@ hardware_map_t initialize_platform()
                                .baud_rate = 1.0_MHz,
                              });
 
+  static hal::lpc40::output_pin led(1, 10);
+
   return {
     .console = &uart0,
     .can = &can,
     .clock = &counter,
+    .status_led = &led,
     .reset = []() { hal::cortex_m::reset(); },
   };
 }
