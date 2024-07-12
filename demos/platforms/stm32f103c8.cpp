@@ -19,6 +19,7 @@
 #include <libhal-stm32f1/can.hpp>
 #include <libhal-stm32f1/clock.hpp>
 #include <libhal-stm32f1/constants.hpp>
+#include <libhal-stm32f1/output_pin.hpp>
 #include <libhal-stm32f1/uart.hpp>
 
 #include "../hardware_map.hpp"
@@ -33,12 +34,15 @@ hardware_map_t initialize_platform()
   auto cpu_frequency = hal::stm32f1::frequency(hal::stm32f1::peripheral::cpu);
   static hal::cortex_m::dwt_counter steady_clock(cpu_frequency);
   static hal::stm32f1::uart uart1(hal::port<1>, hal::buffer<128>);
-  static hal::stm32f1::can can({ .baud_rate = 100'000 },
+  static hal::stm32f1::can can({ .baud_rate = 1'000'000 },
                                hal::stm32f1::can_pins::pb9_pb8);
+  static hal::stm32f1::output_pin led('C', 13);
+
   return {
     .console = &uart1,
     .can = &can,
     .clock = &steady_clock,
+    .status_led = &led,
     .reset = []() { hal::cortex_m::reset(); },
   };
 }

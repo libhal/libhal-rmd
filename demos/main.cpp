@@ -12,11 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <libhal-exceptions/control.hpp>
+#include <libhal-util/steady_clock.hpp>
 #include <libhal/error.hpp>
 
 #include "hardware_map.hpp"
 
 hardware_map_t hardware_map{};
+
+[[noreturn]] void terminate_handler() noexcept
+{
+  using namespace std::chrono_literals;
+  using namespace hal::literals;
+
+  while (true) {
+    hardware_map.status_led->level(false);
+    hal::delay(*hardware_map.clock, 100ms);
+    hardware_map.status_led->level(true);
+    hal::delay(*hardware_map.clock, 100ms);
+    hardware_map.status_led->level(false);
+    hal::delay(*hardware_map.clock, 100ms);
+    hardware_map.status_led->level(true);
+    hal::delay(*hardware_map.clock, 1000ms);
+  }
+}
 
 int main()
 {
@@ -25,6 +44,8 @@ int main()
   } catch (...) {
     hal::halt();
   }
+
+  hal::set_terminate(terminate_handler);
 
   application(hardware_map);
   hardware_map.reset();
