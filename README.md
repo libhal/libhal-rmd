@@ -1,8 +1,6 @@
 # libhal-rmd
 
 [![✅ Checks](https://github.com/libhal/libhal-rmd/actions/workflows/ci.yml/badge.svg)](https://github.com/libhal/libhal-rmd/actions/workflows/ci.yml)
-[![Coverage](https://libhal.github.io/libhal-rmd/coverage/coverage.svg)](https://libhal.github.io/libhal-rmd/coverage/)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/b084e6d5962d49a9afcb275d62cd6586)](https://www.codacy.com/gh/libhal/libhal-rmd/dashboard?utm_source=github.com&utm_medium=referral&utm_content=libhal/libhal-rmd&utm_campaign=Badge_Grade)
 [![GitHub stars](https://img.shields.io/github/stars/libhal/libhal-rmd.svg)](https://github.com/libhal/libhal-rmd/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/libhal/libhal-rmd.svg)](https://github.com/libhal/libhal-rmd/network)
 [![GitHub issues](https://img.shields.io/github/issues/libhal/libhal-rmd.svg)](https://github.com/libhal/libhal-rmd/issues)
@@ -12,9 +10,7 @@ libhal device library for the series of the RMD smart motors from
 
 ## 📚 Software APIs & Usage
 
-To learn about the available drivers and APIs see the
-[Doxygen](https://libhal.github.io/libhal-rmd/api)
-documentation page or look at the
+Take a look at the
 [`include/libhal-rmd`](https://github.com/libhal/libhal-rmd/tree/main/include/libhal-rmd)
 directory.
 
@@ -33,8 +29,8 @@ The `libhal-lpc40` profiles used for demos. To install them use the following
 commands.
 
 ```bash
-conan config install -sf conan/profiles/ -tf profiles https://github.com/libhal/libhal-armcortex.git
-conan config install -sf conan/profiles/ -tf profiles https://github.com/libhal/libhal-lpc40.git
+conan config install -tf profiles -sf conan/profiles/v1 https://github.com/libhal/arm-gnu-toolchain.git
+conan config install -sf conan/profiles/v2 -tf profiles https://github.com/libhal/libhal-lpc40.git
 ```
 
 ## 🏗️ Building Demos
@@ -42,13 +38,13 @@ conan config install -sf conan/profiles/ -tf profiles https://github.com/libhal/
 To build demos, start at the root of the repo and execute the following command:
 
 ```bash
-conan build demos -pr lpc4078 -s build_type=Debug
+conan build demos -pr lpc4078 -pr arm-gcc-12.3
 ```
 
 or for the `lpc4074`
 
 ```bash
-conan build demos -pr lpc4074 -s build_type=Debug
+conan build demos -pr lpc4074 -pr arm-gcc-12.3
 ```
 
 ## 🔌 Device Wiring & Hookup guide (CAN BUS)
@@ -66,7 +62,18 @@ Add the following to your `requirements()` method:
 
 ```python
     def requirements(self):
-        self.requires("libhal-rmd/[^2.0.0]")
+        self.requires("libhal-rmd/[^5.0.0]")
+```
+
+If you are using CMake make sure to first find the package then link it to your
+binary.
+
+```CMake
+# Find & load package
+find_package(libhal-rmd REQUIRED CONFIG)
+
+# Link library to your binary
+target_link_libraries(my_binary.elf PRIVATE libhal::rmd)
 ```
 
 ## Contributing
